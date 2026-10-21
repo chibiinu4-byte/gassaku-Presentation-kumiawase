@@ -1,7 +1,7 @@
 import streamlit as st
 import pulp
 import itertools
-from collections import defaultdict
+from collections import defaultdict, Counter
 import re
 
 st.set_page_config(page_title="発表組み合わせを作る", layout="wide")
@@ -43,9 +43,9 @@ st.subheader("班の人数を指定")
 size_text = st.text_input(
     "作りたい班の人数をスペース区切りで入力してください（合計が人数と一致するように）",
     value="",
-    placeholder="例: 4 4 4 4 4 4 3　　または　　5 5 5 5 3　　など"
+    placeholder="例: 4 4 4 3 3　　または　　2 2 2 2 3 3 4　　など（2人班・3人班もOK）"
 )
-st.caption("空欄の場合は自動で「できるだけ4人班 + 余り」にします")
+st.caption("空欄の場合は自動で「できるだけ4人班 + 余り」にします。2人班や3人班も自由に指定できます。")
 
 # -------------------- パース関数（人名対応） --------------------
 def parse_groups(text):
@@ -114,15 +114,14 @@ if st.button("第3グループを計算する", type="primary"):
             remainder = n % 4
             if remainder == 0:
                 sizes = [4] * num4
+            elif remainder == 3:
+                sizes = [4] * num4 + [3]
+            elif remainder == 2:
+                sizes = [4] * (num4 - 1) + [3, 3] if num4 >= 1 else [2]
+            elif remainder == 1:
+                sizes = [4] * (num4 - 1) + [3, 2] if num4 >= 1 else [1]
             else:
-                sizes = [4] * (num4 - 1) + [4 + remainder] if num4 >= 1 else [remainder]
-                # より自然な分割に調整（例: 余り3なら 4人班を減らして3人班を作る）
-                if remainder == 3 and num4 >= 1:
-                    sizes = [4] * (num4 - 1) + [3, 4]
-                elif remainder == 2 and num4 >= 1:
-                    sizes = [4] * (num4 - 1) + [3, 3]
-                elif remainder == 1 and num4 >= 2:
-                    sizes = [4] * (num4 - 2) + [3, 3, 3]
+                sizes = [n]
 
         st.info(f"人数: {n}人　→　班の構成: {sizes}")
 
@@ -174,9 +173,8 @@ if st.button("第3グループを計算する", type="primary"):
             return True
 
         # サイズごとに候補を生成
-        from collections import Counter
         size_count = Counter(sizes)
-        candidates = {}  # size -> list of frozenset
+        candidates = {}
         for size in size_count:
             candidates[size] = [frozenset(c) for c in itertools.combinations(symbols, size) if is_good(c)]
 
@@ -191,7 +189,7 @@ if st.button("第3グループを計算する", type="primary"):
 
         # ILP
         prob = pulp.LpProblem("Third_Group", pulp.LpMinimize)
-        vars_dict = {}  # (size, idx) -> variable
+        vars_dict = {}
 
         objective_terms = []
         for size, cands in candidates.items():
@@ -227,7 +225,7 @@ if st.button("第3グループを計算する", type="primary"):
                 if vars_dict[(size, i)].varValue > 0.5:
                     selected.append(sorted(c))
 
-        # サイズ順に並べ替え（大きい順）
+        # サイズの大きい順に並べ替え
         selected.sort(key=lambda x: -len(x))
 
         circled = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
