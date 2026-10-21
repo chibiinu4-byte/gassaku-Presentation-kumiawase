@@ -43,9 +43,9 @@ st.subheader("班の人数を指定")
 size_text = st.text_input(
     "作りたい班の人数をスペース区切りで入力してください（合計が人数と一致するように）",
     value="",
-    placeholder="例: 4 4 4 3 3　　または　　2 2 2 2 3 3 4　　など（2人班・3人班もOK）"
+    placeholder="例: 4 4 4 3 3　　または　　2 2 2 2 3 3 4　　など"
 )
-st.caption("空欄の場合は自動で「できるだけ4人班 + 余り」にします。2人班や3人班も自由に指定できます。")
+st.caption("空欄の場合は自動で「できるだけ4人班 + 余り」にします。")
 
 # -------------------- パース関数（人名対応） --------------------
 def parse_groups(text):
@@ -187,14 +187,14 @@ if st.button("第3グループを計算する", type="primary"):
                     cost += (inter - 1)
             return cost
 
-        # ILP
+        # ILP（PuLP 4.x対応）
         prob = pulp.LpProblem("Third_Group", pulp.LpMinimize)
         vars_dict = {}
 
         objective_terms = []
         for size, cands in candidates.items():
             for i, c in enumerate(cands):
-                var = pulp.LpVariable(f"B_{size}_{i}", cat="Binary")
+                var = prob.add_variable(f"B_{size}_{i}", cat="Binary")
                 vars_dict[(size, i)] = var
                 objective_terms.append(overlap_cost(c) * var)
 
