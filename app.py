@@ -87,10 +87,7 @@ if st.button("第3グループを計算する", type="primary"):
 
         if has_g2:
             symbols_g2 = set().union(*G2)
-            only_g1 = set(symbols) - symbols_g2
             only_g2 = symbols_g2 - set(symbols)
-            if only_g1:
-                st.warning(f"第1グループにしかいない人名（属性制約の対象外）: {sorted(only_g1)}")
             if only_g2:
                 st.warning(f"第2グループにしかいない人名（無視されます）: {sorted(only_g2)}")
 
@@ -129,13 +126,13 @@ if st.button("第3グループを計算する", type="primary"):
             attr = {}
             for i, block in enumerate(G2, 1):
                 for s in block:
-                    if s in symbols:  # 第1グループにいるする人名だけ属性を付与
+                    if s in symbols:
                         attr[s] = i
 
             forbidden_attr = []
             for block in G1:
                 a_set = frozenset(attr[p] for p in block if p in attr)
-                if a_set:  # 空でない場合のみ禁止リストに追加
+                if a_set:
                     forbidden_attr.append(a_set)
 
             g1_comp = {}
@@ -160,70 +157,81 @@ if st.button("第3グループを計算する", type="primary"):
             forbidden_attr = []
             forbidden_pairs = set()
 
-        def is_good(S):
+        def is_good(S, strict=True):
             Sset = set(S)
             if has_g2:
-                # 第2グループとの重複 ≤1（存在する人名のみ）
+                # 第2グループとの重複 ≤1
                 for B in G2:
                     inter = Sset & B
                     if len(inter) > 1:
                         return False
-                # 属性組み合わせ禁止
-                a_set = frozenset(attr[p] for p in S if p in attr)
-                if a_set and a_set in forbidden_attr:
-                    return False
-                # 禁止ペア
-                for pair in itertools.combinations(S, 2):
-                    if frozenset(pair) in forbidden_pairs:
+                if strict:
+                    # 属性組み合わせ禁止
+                    a_set = frozenset(attr[p] for p in S if p in attr)
+                    if a_set and a_set in forbidden_attr:
                         return False
+                    # 禁止ペア
+                    for pair in itertools.combinations(S, 2):
+                        if frozenset(pair) in forbidden_pairs:
+                            return False
             return True
 
-        # サイズごとに候補を生成
-        size_count = Counter(sizes)
-        candidates = {}
-        for size in size_count:
-            candidates[size] = [frozenset(c) for c in itertools.combinations(symbols, size) if is_good(c)]
+        def try_solve(strict=True):
+            size_count = Counter(sizes)
+            candidates = {}
+            for size in size_count:
+                candidates[size] = [frozenset(c) for c in itertools.combinations(symbols, size) if is_good(c, strict=strict)]
 
-        def overlap_cost(S):
-            cost = 0
-            Sset = set(S)
-            for B in G1:
-                inter = len(Sset & B)
-                if inter > 1:
-                    cost += (inter - 1)
-            return cost
+            def overlap_cost(S):
+                cost = 0
+                Sset = set(S)
+                for B in G1:
+                    inter = len(Sset & B)
+                    if inter > 1:
+                        cost += (inter - 1)
+                return cost
 
-        # ILP（PuLP 4.x対応）
-        prob = pulp.LpProblem("Third_Group", pulp.LpMinimize)
-        vars_dict = {}
+            prob = pulp.LpProblem("Third_Group", pulp.LpMinimize)
+            vars_dict = {}
 
-        objective_terms = []
-        for size, cands in candidates.items():
-            for i, c in enumerate(cands):
-                var = prob.add_variable(f"B_{size}_{i}", cat="Binary")
-                vars_dict[(size, i)] = var
-                objective_terms.append(overlap_cost(c) * var)
-
-        prob += pulp.lpSum(objective_terms)
-
-        # 各サイズの個数制約
-        for size, cnt in size_count.items():
-            prob += pulp.lpSum(vars_dict[(size, i)] for i in range(len(candidates[size]))) == cnt
-
-        # 各人がちょうど1回使われる
-        for s in symbols:
-            covering = []
+            objective_terms = []
             for size, cands in candidates.items():
                 for i, c in enumerate(cands):
-                    if s in c:
-                        covering.append(vars_dict[(size, i)])
-            prob += pulp.lpSum(covering) == 1
+                    var = prob.add_variable(f"B_{size}_{i}", cat="Binary")
+                    vars_dict[(size, i)] = var
+                    objective_terms.append(overlap_cost(c) * var)
 
-        # ソルバー呼び出し
-        stats = prob.solve(pulp.COIN_CMD(msg=False, timeLimit=180))
+            if not objective_terms:
+                return None, None, None
 
-        if stats.status != pulp.LpSolveStatus.Optimal:
-            st.error("条件を完全に満たす組み合わせが見つかりませんでした。班の人数指定を変えるか、制約を緩めてみてください。")
+            prob += pulp.lpSum(objective_terms)
+
+            for size, cnt in size_count.items():
+                prob += pulp.lpSum(vars_dict[(size, i)] for i in range(len(candidates[size]))) == cnt
+
+            for s in symbols:
+                covering = []
+                for size, cands in candidates.items():
+                    for i, c in enumerate(cands):
+                        if s in c:
+                            covering.append(vars_dict[(size, i)])
+                prob += pulp.lpSum(covering) == 1
+
+            stats = prob.solve(pulp.COIN_CMD(msg=False, timeLimit=120))
+            return stats, vars_dict, candidates
+
+        # まず厳格な条件で試す
+        stats, vars_dict, candidates = try_solve(strict=True)
+        used_strict = True
+
+        # ダメなら緩和して再試行
+        if stats is None or stats.status != pulp.LpSolveStatus.Optimal:
+            st.warning("厳格な条件では解が見つからなかったため、一部の属性制約を緩和して再計算します。")
+            stats, vars_dict, candidates = try_solve(strict=False)
+            used_strict = False
+
+        if stats is None or stats.status != pulp.LpSolveStatus.Optimal:
+            st.error("組み合わせを作成できませんでした。人数や班の構成を変えてみてください。")
             st.stop()
 
         selected = []
@@ -232,7 +240,6 @@ if st.button("第3グループを計算する", type="primary"):
                 if vars_dict[(size, i)].varValue > 0.5:
                     selected.append(sorted(c))
 
-        # サイズの大きい順に並べ替え
         selected.sort(key=lambda x: -len(x))
 
         circled = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
@@ -241,12 +248,12 @@ if st.button("第3グループを計算する", type="primary"):
             num = circled[idx] if idx < len(circled) else f"{idx+1}."
             result_lines.append(f"{num}{' '.join(block)}")
 
-        st.success("計算完了！")
+        st.success("計算完了！" + ("（厳格な条件で作成）" if used_strict else "（一部制約を緩和して作成）"))
         st.subheader("第3グループ（新しい発表班）")
         st.code("\n".join(result_lines), language=None)
 
         with st.expander("詳細情報（検証用）"):
-            st.write(f"総オーバーラップコスト（小さいほど良い）: {int(pulp.value(prob.objective))}")
+            st.write(f"総オーバーラップコスト（小さいほど良い）: {int(pulp.value(prob.objective)) if 'prob' in locals() else 'N/A'}")
             if has_g2:
                 st.write("各班の属性組み合わせ:")
                 for block in selected:
