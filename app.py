@@ -39,13 +39,13 @@ with col2:
     )
 
 # 班の人数指定
-st.subheader("班の人数を指定")
+st.subheader("第3グループの班の人数を指定")
 size_text = st.text_input(
     "作りたい班の人数をスペース区切りで入力してください（合計が人数と一致するように）",
     value="",
-    placeholder="例: 4 4 4 3 3　　または　　2 2 2 2 3 3 4　　など"
+    placeholder="例: 4 4 4 3 3　　または　　2 2 2 2 3 3 4　　など（2人班・3人班もOK）"
 )
-st.caption("空欄の場合は自動で「できるだけ4人班 + 余り」にします。")
+st.caption("空欄の場合は自動で「できるだけ4人班 + 余り」にします。2人班や3人班も自由に指定できます。")
 
 # -------------------- パース関数（人名対応） --------------------
 def parse_groups(text):
@@ -81,19 +81,18 @@ if st.button("第3グループを計算する", type="primary"):
             st.error("第1グループの解析に失敗しました。入力形式を確認してください。")
             st.stop()
 
-        if has_g2:
-            symbols_g1 = set().union(*G1)
-            symbols_g2 = set().union(*G2)
-            if symbols_g1 != symbols_g2:
-                st.error(f"第1グループと第2グループの人名が一致しません。\n"
-                         f"第1のみ: {sorted(symbols_g1 - symbols_g2)}\n"
-                         f"第2のみ: {sorted(symbols_g2 - symbols_g1)}")
-                st.stop()
-            symbols = sorted(symbols_g1)
-        else:
-            symbols = sorted(set().union(*G1))
-
+        # 第1グループの人名を基準にする
+        symbols = sorted(set().union(*G1))
         n = len(symbols)
+
+        if has_g2:
+            symbols_g2 = set().union(*G2)
+            only_g1 = set(symbols) - symbols_g2
+            only_g2 = symbols_g2 - set(symbols)
+            if only_g1:
+                st.warning(f"第1グループにしかいない人名（属性制約の対象外）: {sorted(only_g1)}")
+            if only_g2:
+                st.warning(f"第2グループにしかいない人名（無視されます）: {sorted(only_g2)}")
 
         # ----- 班の人数を決定 -----
         if size_text.strip():
@@ -125,17 +124,19 @@ if st.button("第3グループを計算する", type="primary"):
 
         st.info(f"人数: {n}人　→　班の構成: {sizes}")
 
-        # 属性関連
+        # 属性関連（第1グループに存在する人名のみ対象）
         if has_g2:
             attr = {}
             for i, block in enumerate(G2, 1):
                 for s in block:
-                    attr[s] = i
+                    if s in symbols:  # 第1グループにいるする人名だけ属性を付与
+                        attr[s] = i
 
             forbidden_attr = []
             for block in G1:
-                a_set = frozenset(attr[p] for p in block)
-                forbidden_attr.append(a_set)
+                a_set = frozenset(attr[p] for p in block if p in attr)
+                if a_set:  # 空でない場合のみ禁止リストに追加
+                    forbidden_attr.append(a_set)
 
             g1_comp = {}
             for block in G1:
@@ -152,7 +153,8 @@ if st.button("第3グループを計算する", type="primary"):
                     continue
                 for Y, Z in itertools.permutations(syms, 2):
                     for X in g1_comp.get(Y, []):
-                        forbidden_pairs.add(frozenset([X, Z]))
+                        if X in symbols:
+                            forbidden_pairs.add(frozenset([X, Z]))
         else:
             attr = {}
             forbidden_attr = []
@@ -161,12 +163,16 @@ if st.button("第3グループを計算する", type="primary"):
         def is_good(S):
             Sset = set(S)
             if has_g2:
+                # 第2グループとの重複 ≤1（存在する人名のみ）
                 for B in G2:
-                    if len(Sset & B) > 1:
+                    inter = Sset & B
+                    if len(inter) > 1:
                         return False
-                a_set = frozenset(attr[p] for p in S)
-                if a_set in forbidden_attr:
+                # 属性組み合わせ禁止
+                a_set = frozenset(attr[p] for p in S if p in attr)
+                if a_set and a_set in forbidden_attr:
                     return False
+                # 禁止ペア
                 for pair in itertools.combinations(S, 2):
                     if frozenset(pair) in forbidden_pairs:
                         return False
@@ -213,7 +219,7 @@ if st.button("第3グループを計算する", type="primary"):
                         covering.append(vars_dict[(size, i)])
             prob += pulp.lpSum(covering) == 1
 
-        # ソルバー呼び出し（PuLP 4.x）
+        # ソルバー呼び出し
         stats = prob.solve(pulp.COIN_CMD(msg=False, timeLimit=180))
 
         if stats.status != pulp.LpSolveStatus.Optimal:
@@ -244,7 +250,7 @@ if st.button("第3グループを計算する", type="primary"):
             if has_g2:
                 st.write("各班の属性組み合わせ:")
                 for block in selected:
-                    a_set = sorted(attr[p] for p in block)
+                    a_set = sorted(attr[p] for p in block if p in attr)
                     st.write(f"{' '.join(block)} → {a_set}")
 
 st.markdown("---")
