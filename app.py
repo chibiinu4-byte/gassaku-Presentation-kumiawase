@@ -39,7 +39,7 @@ with col2:
     )
 
 # 班の人数指定
-st.subheader("第3グループの班の人数を指定")
+st.subheader("班の人数を指定")
 size_text = st.text_input(
     "作りたい班の人数をスペース区切りで入力してください（合計が人数と一致するように）",
     value="",
