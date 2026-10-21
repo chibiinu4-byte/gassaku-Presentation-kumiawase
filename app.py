@@ -73,13 +73,30 @@ def parse_groups(text):
 
 # -------------------- メイン処理 --------------------
 if st.button("第3グループを計算する", type="primary"):
-    if not g1_text.strip() or not g2_text.strip():
-        st.error("第1グループと第2グループの両方を入力してください。")
-        st.stop()
+   if not g1_text.strip():
+    st.error("第1グループは必ず入力してください。")
+    st.stop()
 
     with st.spinner("計算中...（数秒〜十数秒かかることがあります）"):
         G1 = parse_groups(g1_text)
-        G2 = parse_groups(g2_text)
+        G1 = parse_groups(g1_text)
+G2 = parse_groups(g2_text) if g2_text.strip() else []
+
+# 第2グループが空の場合のフラグ
+has_g2 = len(G2) > 0
+
+if has_g2:
+    symbols_g1 = set().union(*G1)
+    symbols_g2 = set().union(*G2)
+    if symbols_g1 != symbols_g2:
+        st.error(f"第1グループと第2グループの記号が一致しません。\n"
+                 f"第1のみ: {sorted(symbols_g1 - symbols_g2)}\n"
+                 f"第2のみ: {sorted(symbols_g2 - symbols_g1)}")
+        st.stop()
+    symbols = sorted(symbols_g1)
+else:
+    # 第2グループが空の場合は第1グループの記号だけを使う
+    symbols = sorted(set().union(*G1))
 
         if not G1 or not G2:
             st.error("グループの解析に失敗しました。入力形式を確認してください。")
@@ -110,54 +127,59 @@ if st.button("第3グループを計算する", type="primary"):
             st.stop()
 
         st.info(f"記号数: {n}　→　4記号の項 {num4} 個 ＋ 3記号の項 {num3} 個 で分割します")
+if has_g2:
+    # 属性マップ
+    attr = {}
+    for i, block in enumerate(G2, 1):
+        for s in block:
+            attr[s] = i
 
-        # 属性マップ（第2グループの項番号を属性とする）
-        attr = {}
-        for i, block in enumerate(G2, 1):
-            for s in block:
-                attr[s] = i
+    # 禁止属性組み合わせ
+    forbidden_attr = []
+    for block in G1:
+        a_set = frozenset(attr[p] for p in block)
+        forbidden_attr.append(a_set)
 
-        # αグループの禁止属性組み合わせ
-        forbidden_attr = []
-        for block in G1:
-            a_set = frozenset(attr[p] for p in block)
-            forbidden_attr.append(a_set)
+    # 禁止ペア
+    g1_comp = {}
+    for block in G1:
+        for p in block:
+            g1_comp[p] = block - {p}
 
-        # 第1グループの仲間
-        g1_comp = {}
-        for block in G1:
-            for p in block:
-                g1_comp[p] = block - {p}
+    attr_to_syms = defaultdict(list)
+    for s, a in attr.items():
+        attr_to_syms[a].append(s)
 
-        # 禁止ペア（条件2）
-        attr_to_syms = defaultdict(list)
-        for s, a in attr.items():
-            attr_to_syms[a].append(s)
-
-        forbidden_pairs = set()
-        for a, syms in attr_to_syms.items():
-            if len(syms) < 2:
-                continue
-            for Y, Z in itertools.permutations(syms, 2):
-                for X in g1_comp.get(Y, []):
-                    forbidden_pairs.add(frozenset([X, Z]))
+    forbidden_pairs = set()
+    for a, syms in attr_to_syms.items():
+        if len(syms) < 2:
+            continue
+        for Y, Z in itertools.permutations(syms, 2):
+            for X in g1_comp.get(Y, []):
+                forbidden_pairs.add(frozenset([X, Z]))
+else:
+    # 第2グループがない場合は空にする
+    attr = {}
+    forbidden_attr = []
+    forbidden_pairs = set()
 
         # 候補生成
         def is_good(S):
-            Sset = set(S)
-            # 第2グループとの重複 ≤1
-            for B in G2:
-                if len(Sset & B) > 1:
-                    return False
-            # 属性組み合わせ禁止
-            a_set = frozenset(attr[p] for p in S)
-            if a_set in forbidden_attr:
+    Sset = set(S)
+    if has_g2:
+        # 第2グループとの重複 ≤1
+        for B in G2:
+            if len(Sset & B) > 1:
                 return False
-            # 禁止ペア
-            for pair in itertools.combinations(S, 2):
-                if frozenset(pair) in forbidden_pairs:
-                    return False
-            return True
+        # 属性組み合わせ禁止
+        a_set = frozenset(attr[p] for p in S)
+        if a_set in forbidden_attr:
+            return False
+        # 禁止ペア
+        for pair in itertools.combinations(S, 2):
+            if frozenset(pair) in forbidden_pairs:
+                return False
+    return True
 
         cand4 = [frozenset(c) for c in itertools.combinations(symbols, 4) if is_good(c)]
         cand3 = [frozenset(c) for c in itertools.combinations(symbols, 3) if is_good(c)] if num3 else []
