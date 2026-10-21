@@ -15,7 +15,7 @@ with col1:
     st.subheader("第1グループ（一回目の発表班）")
     g1_text = st.text_area(
         "例：① 田中 鈴木 佐藤 高橋",
-        height=300,
+        height=280,
         placeholder="""① 田中 鈴木 佐藤 高橋
 ② 伊藤 渡辺 山本 中村
 ③ 小林 加藤 吉田 山田
@@ -30,13 +30,22 @@ with col2:
     st.subheader("第2グループ（合作班・任意）")
     g2_text = st.text_area(
         "入力しなくても計算できます（合作している場合のみ記入）",
-        height=300,
+        height=280,
         placeholder="""（任意）
 ① 田中 伊藤
 ② 鈴木 渡辺
 ③ 佐藤 山本
 ..."""
     )
+
+# 班の人数指定
+st.subheader("第3グループの班の人数を指定")
+size_text = st.text_input(
+    "作りたい班の人数をスペース区切りで入力してください（合計が人数と一致するように）",
+    value="",
+    placeholder="例: 4 4 4 4 4 4 3　　または　　5 5 5 5 3　　など"
+)
+st.caption("空欄の場合は自動で「できるだけ4人班 + 余り」にします")
 
 # -------------------- パース関数（人名対応） --------------------
 def parse_groups(text):
@@ -46,14 +55,11 @@ def parse_groups(text):
         line = line.strip()
         if not line:
             continue
-        # ①②や数字を除去
         line = re.sub(r'^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳\d]+[\.．、\s]*', '', line)
-        # 全角英数字を半角に
         line = line.translate(str.maketrans(
             'ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺａｂｃｄｅ０１２３４５６７８９',
             'ABCDEFGHIJKLMNOPQRSTUVWXYZabcde0123456789'
         ))
-        # 空白・読点などで分割
         symbols = re.split(r'[\s　,、]+', line)
         symbols = [s.strip() for s in symbols if s.strip()]
         if symbols:
@@ -66,7 +72,7 @@ if st.button("第3グループを計算する", type="primary"):
         st.error("第1グループは必ず入力してください。")
         st.stop()
 
-    with st.spinner("計算中...（数秒〜十数秒かかることがあります）"):
+    with st.spinner("計算中...（人数が多いと時間がかかることがあります）"):
         G1 = parse_groups(g1_text)
         G2 = parse_groups(g2_text) if g2_text.strip() else []
         has_g2 = len(G2) > 0
@@ -79,7 +85,7 @@ if st.button("第3グループを計算する", type="primary"):
             symbols_g1 = set().union(*G1)
             symbols_g2 = set().union(*G2)
             if symbols_g1 != symbols_g2:
-                st.error(f"第1グループと第2グループの記号（人名）が一致しません。\n"
+                st.error(f"第1グループと第2グループの人名が一致しません。\n"
                          f"第1のみ: {sorted(symbols_g1 - symbols_g2)}\n"
                          f"第2のみ: {sorted(symbols_g2 - symbols_g1)}")
                 st.stop()
@@ -89,17 +95,36 @@ if st.button("第3グループを計算する", type="primary"):
 
         n = len(symbols)
 
-        if n % 4 == 3:
-            num4 = (n - 3) // 4
-            num3 = 1
-        elif n % 4 == 0:
-            num4 = n // 4
-            num3 = 0
+        # ----- 班の人数を決定 -----
+        if size_text.strip():
+            try:
+                sizes = [int(x) for x in size_text.strip().split()]
+                if sum(sizes) != n:
+                    st.error(f"指定した班の人数の合計（{sum(sizes)}）が実際の人数（{n}）と一致しません。")
+                    st.stop()
+                if any(s < 1 for s in sizes):
+                    st.error("班の人数は1以上にしてください。")
+                    st.stop()
+            except ValueError:
+                st.error("班の人数は数字をスペース区切りで入力してください。")
+                st.stop()
         else:
-            st.error(f"人数が {n} 人です。4の倍数または 4の倍数+3 になるようにしてください。")
-            st.stop()
+            # 自動：できるだけ4人班
+            num4 = n // 4
+            remainder = n % 4
+            if remainder == 0:
+                sizes = [4] * num4
+            else:
+                sizes = [4] * (num4 - 1) + [4 + remainder] if num4 >= 1 else [remainder]
+                # より自然な分割に調整（例: 余り3なら 4人班を減らして3人班を作る）
+                if remainder == 3 and num4 >= 1:
+                    sizes = [4] * (num4 - 1) + [3, 4]
+                elif remainder == 2 and num4 >= 1:
+                    sizes = [4] * (num4 - 1) + [3, 3]
+                elif remainder == 1 and num4 >= 2:
+                    sizes = [4] * (num4 - 2) + [3, 3, 3]
 
-        st.info(f"人数: {n}人　→　4人班 {num4} 個 ＋ 3人班 {num3} 個 で分割します")
+        st.info(f"人数: {n}人　→　班の構成: {sizes}")
 
         # 属性関連
         if has_g2:
@@ -148,8 +173,12 @@ if st.button("第3グループを計算する", type="primary"):
                         return False
             return True
 
-        cand4 = [frozenset(c) for c in itertools.combinations(symbols, 4) if is_good(c)]
-        cand3 = [frozenset(c) for c in itertools.combinations(symbols, 3) if is_good(c)] if num3 else []
+        # サイズごとに候補を生成
+        from collections import Counter
+        size_count = Counter(sizes)
+        candidates = {}  # size -> list of frozenset
+        for size in size_count:
+            candidates[size] = [frozenset(c) for c in itertools.combinations(symbols, size) if is_good(c)]
 
         def overlap_cost(S):
             cost = 0
@@ -160,41 +189,46 @@ if st.button("第3グループを計算する", type="primary"):
                     cost += (inter - 1)
             return cost
 
-        costs4 = [overlap_cost(c) for c in cand4]
-        costs3 = [overlap_cost(c) for c in cand3]
-
         # ILP
         prob = pulp.LpProblem("Third_Group", pulp.LpMinimize)
-        v4 = pulp.LpVariable.dicts("B4", range(len(cand4)), cat="Binary")
-        v3 = pulp.LpVariable.dicts("B3", range(len(cand3)), cat="Binary") if num3 else {}
+        vars_dict = {}  # (size, idx) -> variable
 
-        prob += pulp.lpSum(costs4[i] * v4[i] for i in range(len(cand4))) + \
-                pulp.lpSum(costs3[i] * v3[i] for i in range(len(cand3)))
+        objective_terms = []
+        for size, cands in candidates.items():
+            for i, c in enumerate(cands):
+                var = pulp.LpVariable(f"B_{size}_{i}", cat="Binary")
+                vars_dict[(size, i)] = var
+                objective_terms.append(overlap_cost(c) * var)
 
-        prob += pulp.lpSum(v4[i] for i in range(len(cand4))) == num4
-        if num3:
-            prob += pulp.lpSum(v3[i] for i in range(len(cand3))) == num3
+        prob += pulp.lpSum(objective_terms)
 
+        # 各サイズの個数制約
+        for size, cnt in size_count.items():
+            prob += pulp.lpSum(vars_dict[(size, i)] for i in range(len(candidates[size]))) == cnt
+
+        # 各人がちょうど1回使われる
         for s in symbols:
-            covering = [v4[i] for i, c in enumerate(cand4) if s in c]
-            if num3:
-                covering += [v3[i] for i, c in enumerate(cand3) if s in c]
+            covering = []
+            for size, cands in candidates.items():
+                for i, c in enumerate(cands):
+                    if s in c:
+                        covering.append(vars_dict[(size, i)])
             prob += pulp.lpSum(covering) == 1
 
-        status = prob.solve(pulp.PULP_CBC_CMD(msg=False, timeLimit=120))
+        status = prob.solve(pulp.PULP_CBC_CMD(msg=False, timeLimit=180))
 
         if pulp.LpStatus[status] != "Optimal":
-            st.error("条件を完全に満たす組み合わせが見つかりませんでした。入力を確認するか、人数を調整してください。")
+            st.error("条件を完全に満たす組み合わせが見つかりませんでした。班の人数指定を変えるか、制約を緩めてみてください。")
             st.stop()
 
         selected = []
-        for i in range(len(cand4)):
-            if v4[i].varValue > 0.5:
-                selected.append(sorted(cand4[i]))
-        if num3:
-            for i in range(len(cand3)):
-                if v3[i].varValue > 0.5:
-                    selected.append(sorted(cand3[i]))
+        for size, cands in candidates.items():
+            for i, c in enumerate(cands):
+                if vars_dict[(size, i)].varValue > 0.5:
+                    selected.append(sorted(c))
+
+        # サイズ順に並べ替え（大きい順）
+        selected.sort(key=lambda x: -len(x))
 
         circled = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
         result_lines = []
