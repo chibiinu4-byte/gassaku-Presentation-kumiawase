@@ -12,45 +12,33 @@ st.markdown("もうさっき聞いた……という発表をなくします。�
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("第1グループ")
+    st.subheader("第1グループ（一回目の発表班）")
     g1_text = st.text_area(
-        "入力例を参考に記入してください",
+        "例：① 田中 鈴木 佐藤 高橋",
         height=300,
-        placeholder="""①ＡＢＣＤ
-②ＥＦＧＨ
-③ＩＪＫＬ
-④ＭＮＯＰ
-⑤ＱＲＳＴ
-⑥ＵＶＷＸ
-⑦ＹＺａ
-⑧ｂｃｄｅ"""
+        placeholder="""① 田中 鈴木 佐藤 高橋
+② 伊藤 渡辺 山本 中村
+③ 小林 加藤 吉田 山田
+④ 松本 井上 木村 林
+⑤ 斎藤 清水 山口 森
+⑥ 池田 橋本 石川 前田
+⑦ 藤原 岡田 長谷川 近藤
+⑧ 坂本 村上 石田 原田"""
     )
 
 with col2:
-    st.subheader("第2グループ（任意）")
+    st.subheader("第2グループ（合作班・任意）")
     g2_text = st.text_area(
-        "入力しなくても計算できます（入力した場合は属性条件を適用します）",
+        "入力しなくても計算できます（合作している場合のみ記入）",
         height=300,
         placeholder="""（任意）
-①ｃ
-②Ｔ
-③Ｐ
-④ａｅ
-⑤ＣＧ
-⑥Ｕ
-⑦ＬＱＸ
-⑧ＤＩＭ
-⑨Ｚｄ
-⑩ＡＥ
-⑪ＨＲＶ
-⑫ＪＮ
-⑬Ｙｂ
-⑭ＢＦＯ
-⑮ＫＷ
-⑯Ｓ"""
+① 田中 伊藤
+② 鈴木 渡辺
+③ 佐藤 山本
+..."""
     )
 
-# -------------------- パース関数 --------------------
+# -------------------- パース関数（人名対応） --------------------
 def parse_groups(text):
     groups = []
     lines = text.strip().splitlines()
@@ -58,12 +46,16 @@ def parse_groups(text):
         line = line.strip()
         if not line:
             continue
+        # ①②や数字を除去
         line = re.sub(r'^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳\d]+[\.．、\s]*', '', line)
+        # 全角英数字を半角に
         line = line.translate(str.maketrans(
             'ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺａｂｃｄｅ０１２３４５６７８９',
             'ABCDEFGHIJKLMNOPQRSTUVWXYZabcde0123456789'
         ))
-        symbols = re.findall(r'[A-Za-z0-9]', line)
+        # 空白・読点などで分割
+        symbols = re.split(r'[\s　,、]+', line)
+        symbols = [s.strip() for s in symbols if s.strip()]
         if symbols:
             groups.append(set(symbols))
     return groups
@@ -87,7 +79,7 @@ if st.button("第3グループを計算する", type="primary"):
             symbols_g1 = set().union(*G1)
             symbols_g2 = set().union(*G2)
             if symbols_g1 != symbols_g2:
-                st.error(f"第1グループと第2グループの記号が一致しません。\n"
+                st.error(f"第1グループと第2グループの記号（人名）が一致しません。\n"
                          f"第1のみ: {sorted(symbols_g1 - symbols_g2)}\n"
                          f"第2のみ: {sorted(symbols_g2 - symbols_g1)}")
                 st.stop()
@@ -104,10 +96,10 @@ if st.button("第3グループを計算する", type="primary"):
             num4 = n // 4
             num3 = 0
         else:
-            st.error(f"記号数が {n} 個です。4の倍数または 4の倍数+3 になるようにしてください。")
+            st.error(f"人数が {n} 人です。4の倍数または 4の倍数+3 になるようにしてください。")
             st.stop()
 
-        st.info(f"記号数: {n}　→　4記号の項 {num4} 個 ＋ 3記号の項 {num3} 個 で分割します")
+        st.info(f"人数: {n}人　→　4人班 {num4} 個 ＋ 3人班 {num3} 個 で分割します")
 
         # 属性関連
         if has_g2:
@@ -192,7 +184,7 @@ if st.button("第3グループを計算する", type="primary"):
         status = prob.solve(pulp.PULP_CBC_CMD(msg=False, timeLimit=120))
 
         if pulp.LpStatus[status] != "Optimal":
-            st.error("条件を完全に満たす組み合わせが見つかりませんでした。入力を確認するか、制約を緩めて再試行してください。")
+            st.error("条件を完全に満たす組み合わせが見つかりませんでした。入力を確認するか、人数を調整してください。")
             st.stop()
 
         selected = []
@@ -208,19 +200,19 @@ if st.button("第3グループを計算する", type="primary"):
         result_lines = []
         for idx, block in enumerate(selected):
             num = circled[idx] if idx < len(circled) else f"{idx+1}."
-            result_lines.append(f"{num}{''.join(block)}")
+            result_lines.append(f"{num}{' '.join(block)}")
 
         st.success("計算完了！")
-        st.subheader("第3グループ")
+        st.subheader("第3グループ（新しい発表班）")
         st.code("\n".join(result_lines), language=None)
 
         with st.expander("詳細情報（検証用）"):
             st.write(f"総オーバーラップコスト（小さいほど良い）: {int(pulp.value(prob.objective))}")
             if has_g2:
-                st.write("各項の属性組み合わせ:")
+                st.write("各班の属性組み合わせ:")
                 for block in selected:
                     a_set = sorted(attr[p] for p in block)
-                    st.write(f"{''.join(block)} → {a_set}")
+                    st.write(f"{' '.join(block)} → {a_set}")
 
 st.markdown("---")
-st.caption("「発表組み合わせを作る」テンプレート準拠")
+st.caption("「発表組み合わせを作る」｜もうさっき聞いた発表をなくすツール")
