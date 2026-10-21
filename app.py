@@ -121,7 +121,7 @@ if st.button("第3グループを計算する", type="primary"):
 
         st.info(f"人数: {n}人　→　班の構成: {sizes}")
 
-        # 属性関連（第1グループに存在する人名のみ対象）
+        # 属性関連
         if has_g2:
             attr = {}
             for i, block in enumerate(G2, 1):
@@ -160,17 +160,14 @@ if st.button("第3グループを計算する", type="primary"):
         def is_good(S, strict=True):
             Sset = set(S)
             if has_g2:
-                # 第2グループとの重複 ≤1
                 for B in G2:
                     inter = Sset & B
                     if len(inter) > 1:
                         return False
                 if strict:
-                    # 属性組み合わせ禁止
                     a_set = frozenset(attr[p] for p in S if p in attr)
                     if a_set and a_set in forbidden_attr:
                         return False
-                    # 禁止ペア
                     for pair in itertools.combinations(S, 2):
                         if frozenset(pair) in forbidden_pairs:
                             return False
@@ -202,7 +199,7 @@ if st.button("第3グループを計算する", type="primary"):
                     objective_terms.append(overlap_cost(c) * var)
 
             if not objective_terms:
-                return None, None, None
+                return None, None, None, None
 
             prob += pulp.lpSum(objective_terms)
 
@@ -218,16 +215,16 @@ if st.button("第3グループを計算する", type="primary"):
                 prob += pulp.lpSum(covering) == 1
 
             stats = prob.solve(pulp.COIN_CMD(msg=False, timeLimit=120))
-            return stats, vars_dict, candidates
+            return stats, vars_dict, candidates, prob
 
         # まず厳格な条件で試す
-        stats, vars_dict, candidates = try_solve(strict=True)
+        stats, vars_dict, candidates, prob = try_solve(strict=True)
         used_strict = True
 
         # ダメなら緩和して再試行
         if stats is None or stats.status != pulp.LpSolveStatus.Optimal:
             st.warning("厳格な条件では解が見つからなかったため、一部の属性制約を緩和して再計算します。")
-            stats, vars_dict, candidates = try_solve(strict=False)
+            stats, vars_dict, candidates, prob = try_solve(strict=False)
             used_strict = False
 
         if stats is None or stats.status != pulp.LpSolveStatus.Optimal:
@@ -237,7 +234,8 @@ if st.button("第3グループを計算する", type="primary"):
         selected = []
         for size, cands in candidates.items():
             for i, c in enumerate(cands):
-                if vars_dict[(size, i)].varValue > 0.5:
+                val = pulp.value(vars_dict[(size, i)])
+                if val is not None and val > 0.5:
                     selected.append(sorted(c))
 
         selected.sort(key=lambda x: -len(x))
@@ -253,7 +251,8 @@ if st.button("第3グループを計算する", type="primary"):
         st.code("\n".join(result_lines), language=None)
 
         with st.expander("詳細情報（検証用）"):
-            st.write(f"総オーバーラップコスト（小さいほど良い）: {int(pulp.value(prob.objective)) if 'prob' in locals() else 'N/A'}")
+            obj_val = pulp.value(prob.objective)
+            st.write(f"総オーバーラップコスト（小さいほど良い）: {int(obj_val) if obj_val is not None else 'N/A'}")
             if has_g2:
                 st.write("各班の属性組み合わせ:")
                 for block in selected:
