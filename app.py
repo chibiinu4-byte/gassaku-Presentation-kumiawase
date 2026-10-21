@@ -73,49 +73,35 @@ def parse_groups(text):
 
 # -------------------- メイン処理 --------------------
 if st.button("第3グループを計算する", type="primary"):
-   if not g1_text.strip():
-    st.error("第1グループは必ず入力してください。")
-    st.stop()
+    if not g1_text.strip():
+        st.error("第1グループは必ず入力してください。")
+        st.stop()
 
     with st.spinner("計算中...（数秒〜十数秒かかることがあります）"):
         G1 = parse_groups(g1_text)
-        G1 = parse_groups(g1_text)
-G2 = parse_groups(g2_text) if g2_text.strip() else []
+        G2 = parse_groups(g2_text) if g2_text.strip() else []
 
-# 第2グループが空の場合のフラグ
-has_g2 = len(G2) > 0
+        has_g2 = len(G2) > 0
 
-if has_g2:
-    symbols_g1 = set().union(*G1)
-    symbols_g2 = set().union(*G2)
-    if symbols_g1 != symbols_g2:
-        st.error(f"第1グループと第2グループの記号が一致しません。\n"
-                 f"第1のみ: {sorted(symbols_g1 - symbols_g2)}\n"
-                 f"第2のみ: {sorted(symbols_g2 - symbols_g1)}")
-        st.stop()
-    symbols = sorted(symbols_g1)
-else:
-    # 第2グループが空の場合は第1グループの記号だけを使う
-    symbols = sorted(set().union(*G1))
-
-        if not G1 or not G2:
-            st.error("グループの解析に失敗しました。入力形式を確認してください。")
+        if not G1:
+            st.error("第1グループの解析に失敗しました。入力形式を確認してください。")
             st.stop()
 
-        # 記号の集合を取得
-        symbols_g1 = set().union(*G1)
-        symbols_g2 = set().union(*G2)
+        if has_g2:
+            symbols_g1 = set().union(*G1)
+            symbols_g2 = set().union(*G2)
+            if symbols_g1 != symbols_g2:
+                st.error(f"第1グループと第2グループの記号が一致しません。\n"
+                         f"第1のみ: {sorted(symbols_g1 - symbols_g2)}\n"
+                         f"第2のみ: {sorted(symbols_g2 - symbols_g1)}")
+                st.stop()
+            symbols = sorted(symbols_g1)
+        else:
+            symbols = sorted(set().union(*G1))
 
-        if symbols_g1 != symbols_g2:
-            st.error(f"第1グループと第2グループの記号が一致しません。\n"
-                     f"第1のみ: {sorted(symbols_g1 - symbols_g2)}\n"
-                     f"第2のみ: {sorted(symbols_g2 - symbols_g1)}")
-            st.stop()
-
-        symbols = sorted(symbols_g1)
         n = len(symbols)
 
-        # サイズ決定（4の倍数+3 を想定）
+        # サイズ決定
         if n % 4 == 3:
             num4 = (n - 3) // 4
             num3 = 1
