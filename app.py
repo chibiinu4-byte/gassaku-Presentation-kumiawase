@@ -214,9 +214,9 @@ if st.button("第3グループを計算する", type="primary"):
             prob += pulp.lpSum(covering) == 1
 
         # ソルバー呼び出し（PuLP 4.x）
-        status = prob.solve(pulp.COIN_CMD(msg=False, timeLimit=180))
+        stats = prob.solve(pulp.COIN_CMD(msg=False, timeLimit=180))
 
-        if pulp.LpStatus[status] != "Optimal":
+        if stats.status != pulp.LpSolveStatus.Optimal:
             st.error("条件を完全に満たす組み合わせが見つかりませんでした。班の人数指定を変えるか、制約を緩めてみてください。")
             st.stop()
 
