@@ -149,23 +149,53 @@ else:
     forbidden_attr = []
     forbidden_pairs = set()
 
-        # 候補生成
+          # 属性関連の処理
+        if has_g2:
+            attr = {}
+            for i, block in enumerate(G2, 1):
+                for s in block:
+                    attr[s] = i
+
+            forbidden_attr = []
+            for block in G1:
+                a_set = frozenset(attr[p] for p in block)
+                forbidden_attr.append(a_set)
+
+            g1_comp = {}
+            for block in G1:
+                for p in block:
+                    g1_comp[p] = block - {p}
+
+            attr_to_syms = defaultdict(list)
+            for s, a in attr.items():
+                attr_to_syms[a].append(s)
+
+            forbidden_pairs = set()
+            for a, syms in attr_to_syms.items():
+                if len(syms) < 2:
+                    continue
+                for Y, Z in itertools.permutations(syms, 2):
+                    for X in g1_comp.get(Y, []):
+                        forbidden_pairs.add(frozenset([X, Z]))
+        else:
+            attr = {}
+            forbidden_attr = []
+            forbidden_pairs = set()
+
+        # 候補生成関数
         def is_good(S):
-    Sset = set(S)
-    if has_g2:
-        # 第2グループとの重複 ≤1
-        for B in G2:
-            if len(Sset & B) > 1:
-                return False
-        # 属性組み合わせ禁止
-        a_set = frozenset(attr[p] for p in S)
-        if a_set in forbidden_attr:
-            return False
-        # 禁止ペア
-        for pair in itertools.combinations(S, 2):
-            if frozenset(pair) in forbidden_pairs:
-                return False
-    return True
+            Sset = set(S)
+            if has_g2:
+                for B in G2:
+                    if len(Sset & B) > 1:
+                        return False
+                a_set = frozenset(attr[p] for p in S)
+                if a_set in forbidden_attr:
+                    return False
+                for pair in itertools.combinations(S, 2):
+                    if frozenset(pair) in forbidden_pairs:
+                        return False
+            return True
 
         cand4 = [frozenset(c) for c in itertools.combinations(symbols, 4) if is_good(c)]
         cand3 = [frozenset(c) for c in itertools.combinations(symbols, 3) if is_good(c)] if num3 else []
